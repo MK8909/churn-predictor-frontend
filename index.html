@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Churn Predictor</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f14;
+      --surface:  #141720;
+      --card:     #1b1f2e;
+      --border:   #272c3f;
+      --accent:   #5b7fff;
+      --accent2:  #ff6b6b;
+      --green:    #3ddc97;
+      --text:     #e8eaf0;
+      --muted:    #7a809a;
+      --label:    #a0a6c0;
+    }
+
+    html { font-size: 15px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Noise overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.4;
+    }
+
+    /* ── Layout ── */
+    .page { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 3rem; }
+    .eyebrow {
+      font-family: 'DM Mono', monospace; font-size: 0.7rem;
+      letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+    header h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 400; line-height: 1.15;
+      background: linear-gradient(135deg, #e8eaf0 30%, var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    header p { color: var(--muted); margin-top: 0.75rem; font-size: 0.95rem; }
+
+    /* ── API URL bar ── */
+    .url-bar {
+      display: flex; gap: 0.5rem; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.6rem 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .url-bar label { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+    .url-bar input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--accent); font-family: 'DM Mono', monospace; font-size: 0.82rem;
+    }
+    .url-bar input::placeholder { color: var(--border); }
+
+    /* ── Two-column grid ── */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.5rem;
+    }
+    .card-title {
+      font-family: 'DM Mono', monospace; font-size: 0.68rem;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 1.2rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .card-title::before {
+      content: ''; display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--accent);
+    }
+
+    /* ── Form fields ── */
+    .field { margin-bottom: 1rem; }
+    .field label { display: block; font-size: 0.78rem; color: var(--label); margin-bottom: 0.35rem; }
+
+    .field select,
+    .field input[type="number"] {
+      width: 100%;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.55rem 0.8rem;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.88rem;
+      outline: none; transition: border-color 0.2s;
+      appearance: none; -webkit-appearance: none;
+    }
+    .field select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a809a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2rem; }
+    .field select:focus,
+    .field input[type="number"]:focus { border-color: var(--accent); }
+    .field select option { background: #1b1f2e; }
+
+    /* ── Toggle switch for SeniorCitizen ── */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+    .toggle-row label { font-size: 0.78rem; color: var(--label); }
+    .toggle { position: relative; width: 44px; height: 24px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0; border-radius: 24px;
+      background: var(--border); cursor: pointer; transition: background 0.2s;
+    }
+    .slider::before {
+      content: ''; position: absolute; width: 18px; height: 18px;
+      left: 3px; top: 3px; border-radius: 50%;
+      background: var(--muted); transition: transform 0.2s, background 0.2s;
+    }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::before { transform: translateX(20px); background: #fff; }
+
+    /* ── Submit button ── */
+    .actions { margin-top: 1.8rem; display: flex; gap: 0.75rem; }
+    .btn {
+      flex: 1; padding: 0.8rem 1.5rem; border: none; border-radius: 10px;
+      font-family: 'DM Sans', sans-serif; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s, transform 0.15s; letter-spacing: 0.01em;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-reset { background: var(--surface); color: var(--muted); border: 1px solid var(--border); flex: 0 0 auto; padding: 0.8rem 1.2rem; }
+    .btn-reset:hover { color: var(--text); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Result panel ── */
+    .result-panel {
+      margin-top: 1.5rem;
+      border-radius: 14px; overflow: hidden;
+      border: 1px solid var(--border);
+      animation: fadeUp 0.4s ease;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .result-header {
+      padding: 1.25rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .result-header.churn    { background: linear-gradient(135deg, #2a1520, #1b1f2e); border-bottom: 1px solid #ff6b6b44; }
+    .result-header.no-churn { background: linear-gradient(135deg, #0f2a1e, #1b1f2e); border-bottom: 1px solid #3ddc9744; }
+
+    .verdict-icon { font-size: 2.2rem; line-height: 1; }
+    .verdict-label {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.5rem; font-weight: 400;
+    }
+    .result-header.churn    .verdict-label { color: var(--accent2); }
+    .result-header.no-churn .verdict-label { color: var(--green); }
+
+    .result-body { background: var(--card); padding: 1.25rem 1.5rem; }
+    .prob-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.85rem; }
+    .prob-row:last-child { margin-bottom: 0; }
+    .prob-label { font-size: 0.78rem; color: var(--label); width: 130px; flex-shrink: 0; }
+    .prob-bar-wrap { flex: 1; background: var(--border); border-radius: 6px; height: 8px; overflow: hidden; }
+    .prob-bar { height: 100%; border-radius: 6px; transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
+    .prob-bar.danger { background: var(--accent2); }
+    .prob-bar.safe   { background: var(--green); }
+    .prob-value { font-family: 'DM Mono', monospace; font-size: 0.82rem; color: var(--text); width: 42px; text-align: right; }
+
+    /* ── Error box ── */
+    .error-box {
+      margin-top: 1.5rem; border-radius: 12px;
+      background: #2a1520; border: 1px solid #ff6b6b55;
+      padding: 1rem 1.25rem; font-size: 0.85rem;
+      color: var(--accent2); font-family: 'DM Mono', monospace;
+      animation: fadeUp 0.3s ease;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin 0.7s linear infinite; display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Raw JSON toggle ── */
+    .raw-toggle {
+      margin-top: 0.75rem;
+      background: none; border: none; color: var(--muted);
+      font-size: 0.76rem; font-family: 'DM Mono', monospace;
+      cursor: pointer; padding: 0; text-decoration: underline;
+    }
+    .raw-json {
+      margin-top: 0.5rem; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.85rem 1rem;
+      font-family: 'DM Mono', monospace; font-size: 0.76rem;
+      color: var(--muted); white-space: pre-wrap; overflow-x: auto;
+      display: none;
+    }
+    .raw-json.visible { display: block; }
+
+    /* ── Footer ── */
+    footer { text-align: center; margin-top: 4rem; color: var(--border); font-size: 0.75rem; font-family: 'DM Mono', monospace; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="eyebrow">Telco · ML · v1.0</div>
+    <h1>Churn Predictor</h1>
+    <p>Fill in customer details and hit Predict to test your API live.</p>
+  </header>
+
+  <!-- API URL -->
+  <div class="url-bar">
+    <label>API →</label>
+    <input id="apiUrl" type="text" value="https://churn-prediction-model-4-e0np.onrender.com/" placeholder="https://churn-prediction-model-4-e0np.onrender.com/"/>
+  </div>
+
+  <form id="churnForm" novalidate>
+    <div class="grid">
+
+      <!-- LEFT COLUMN -->
+      <div>
+        <div class="card">
+          <div class="card-title">Customer Info</div>
+
+          <div class="field">
+            <label>Gender</label>
+            <select name="gender"><option>Female</option><option>Male</option></select>
+          </div>
+
+          <div class="field">
+            <div class="toggle-row">
+              <label>Senior Citizen</label>
+              <label class="toggle">
+                <input type="checkbox" name="SeniorCitizen"/>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Partner</label>
+            <select name="Partner"><option>No</option><option>Yes</option></select>
+          </div>
+
+          <div class="field">
+            <label>Dependents</label>
+            <select name="Dependents"><option>No</option><option>Yes</option></select>
+          </div>
+
+          <div class="field">
+            <label>Tenure (months)</label>
+            <input type="number" name="tenure" min="0" max="120" value="1"/>
+          </div>
+
+          <div class="field">
+            <label>Monthly Charges ($)</label>
+            <input type="number" name="MonthlyCharges" min="0" step="0.01" value="29.85"/>
+          </div>
+
+          <div class="field">
+            <label>Total Charges ($)</label>
+            <input type="number" name="TotalCharges" min="0" step="0.01" value="29.85"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <div class="card" style="margin-bottom:1rem">
+          <div class="card-title">Services</div>
+
+          <div class="field">
+            <label>Phone Service</label>
+            <select name="PhoneService"><option>No</option><option>Yes</option></select>
+          </div>
+
+          <div class="field">
+            <label>Multiple Lines</label>
+            <select name="MultipleLines">
+              <option>No phone service</option>
+              <option>No</option>
+              <option>Yes</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Internet Service</label>
+            <select name="InternetService"><option>DSL</option><option>Fiber optic</option><option>No</option></select>
+          </div>
+
+          <div class="field">
+            <label>Online Security</label>
+            <select name="OnlineSecurity"><option>No</option><option>Yes</option><option>No internet service</option></select>
+          </div>
+
+          <div class="field">
+            <label>Online Backup</label>
+            <select name="OnlineBackup"><option>Yes</option><option>No</option><option>No internet service</option></select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Account</div>
+
+          <div class="field">
+            <label>Device Protection</label>
+            <select name="DeviceProtection"><option>No</option><option>Yes</option><option>No internet service</option></select>
+          </div>
+
+          <div class="field">
+            <label>Tech Support</label>
+            <select name="TechSupport"><option>No</option><option>Yes</option><option>No internet service</option></select>
+          </div>
+
+          <div class="field">
+            <label>Streaming TV</label>
+            <select name="StreamingTV"><option>No</option><option>Yes</option><option>No internet service</option></select>
+          </div>
+
+          <div class="field">
+            <label>Streaming Movies</label>
+            <select name="StreamingMovies"><option>No</option><option>Yes</option><option>No internet service</option></select>
+          </div>
+
+          <div class="field">
+            <label>Contract</label>
+            <select name="Contract">
+              <option>Month-to-month</option>
+              <option>One year</option>
+              <option>Two year</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Paperless Billing</label>
+            <select name="PaperlessBilling"><option>Yes</option><option>No</option></select>
+          </div>
+
+          <div class="field">
+            <label>Payment Method</label>
+            <select name="PaymentMethod">
+              <option>Electronic check</option>
+              <option>Mailed check</option>
+              <option>Bank transfer (automatic)</option>
+              <option>Credit card (automatic)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div><!-- end grid -->
+
+    <div class="actions">
+      <button type="button" class="btn btn-reset" id="resetBtn" title="Reset form">↺</button>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Predict Churn</button>
+    </div>
+  </form>
+
+  <!-- Result -->
+  <div id="result"></div>
+
+</div><!-- end page -->
+
+<footer>churn-predictor · randomforest · telco dataset</footer>
+
+<script>
+  const form      = document.getElementById('churnForm');
+  const resultEl  = document.getElementById('result');
+  const submitBtn = document.getElementById('submitBtn');
+  const resetBtn  = document.getElementById('resetBtn');
+
+  resetBtn.addEventListener('click', () => {
+    form.reset();
+    resultEl.innerHTML = '';
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    resultEl.innerHTML = '';
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>';
+
+    const base = document.getElementById('apiUrl').value.replace(/\/$/, '');
+    const data = buildPayload();
+
+    try {
+      const res  = await fetch(`${base}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        showError(json.detail || JSON.stringify(json));
+        return;
+      }
+
+      showResult(json, data);
+
+    } catch (err) {
+      showError(`Could not reach API at "${base}".\n\nMake sure:\n1. Your FastAPI server is running (uvicorn main:app --reload)\n2. CORS is enabled (it is by default in main.py)\n3. The URL above is correct\n\n${err}`);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Predict Churn';
+    }
+  });
+
+  function buildPayload() {
+    const fd = new FormData(form);
+    const senior = form.querySelector('[name="SeniorCitizen"]').checked ? 1 : 0;
+    return {
+      gender:           fd.get('gender'),
+      SeniorCitizen:    senior,
+      Partner:          fd.get('Partner'),
+      Dependents:       fd.get('Dependents'),
+      tenure:           Number(fd.get('tenure')),
+      PhoneService:     fd.get('PhoneService'),
+      MultipleLines:    fd.get('MultipleLines'),
+      InternetService:  fd.get('InternetService'),
+      OnlineSecurity:   fd.get('OnlineSecurity'),
+      OnlineBackup:     fd.get('OnlineBackup'),
+      DeviceProtection: fd.get('DeviceProtection'),
+      TechSupport:      fd.get('TechSupport'),
+      StreamingTV:      fd.get('StreamingTV'),
+      StreamingMovies:  fd.get('StreamingMovies'),
+      Contract:         fd.get('Contract'),
+      PaperlessBilling: fd.get('PaperlessBilling'),
+      PaymentMethod:    fd.get('PaymentMethod'),
+      MonthlyCharges:   parseFloat(fd.get('MonthlyCharges')),
+      TotalCharges:     parseFloat(fd.get('TotalCharges')),
+    };
+  }
+
+  function showResult(json, payload) {
+    const isChurn   = json.prediction === 'Churn';
+    const churnPct  = Math.round(json.churn_probability * 100);
+    const nochurnPct= Math.round(json.no_churn_probability * 100);
+    const icon      = isChurn ? '⚠️' : '✅';
+    const cls       = isChurn ? 'churn' : 'no-churn';
+
+    const id = 'rawJson' + Date.now();
+
+    resultEl.innerHTML = `
+      <div class="result-panel">
+        <div class="result-header ${cls}">
+          <span class="verdict-icon">${icon}</span>
+          <span class="verdict-label">${json.prediction}</span>
+        </div>
+        <div class="result-body">
+          <div class="prob-row">
+            <span class="prob-label">Churn probability</span>
+            <div class="prob-bar-wrap"><div class="prob-bar danger" style="width:0%" data-target="${churnPct}%"></div></div>
+            <span class="prob-value">${churnPct}%</span>
+          </div>
+          <div class="prob-row">
+            <span class="prob-label">Retention probability</span>
+            <div class="prob-bar-wrap"><div class="prob-bar safe" style="width:0%" data-target="${nochurnPct}%"></div></div>
+            <span class="prob-value">${nochurnPct}%</span>
+          </div>
+        </div>
+      </div>
+      <button class="raw-toggle" onclick="document.getElementById('${id}').classList.toggle('visible');this.textContent=document.getElementById('${id}').classList.contains('visible')?'hide raw json ↑':'show raw json ↓'">show raw json ↓</button>
+      <pre class="raw-json" id="${id}">${JSON.stringify({request: payload, response: json}, null, 2)}</pre>
+    `;
+
+    // Animate bars after render
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.prob-bar[data-target]').forEach(b => {
+        setTimeout(() => { b.style.width = b.dataset.target; }, 50);
+      });
+    });
+  }
+
+  function showError(msg) {
+    resultEl.innerHTML = `<div class="error-box">⚠ ${msg}</div>`;
+  }
+</script>
+</body>
+</html>
